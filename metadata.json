@@ -1,0 +1,8 @@
+{
+  "name": "Indian AI",
+  "description": "A powerful, localized AI assistant for the modern Indian context, featuring fast responses, image generation, and multi-modal capabilities.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
