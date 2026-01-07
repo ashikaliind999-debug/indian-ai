@@ -21,9 +21,22 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [useSearch, setUseSearch] = useState(false);
   const [usePro, setUsePro] = useState(false);
-  const [lastMedia, setLastMedia] = useState<{ url: string; type: 'image' | 'video' } | null>(null);
   const [userStats, setUserStats] = useState<UserStats>({ videoTrialCount: 0, isSubscribed: false });
   const [view, setView] = useState<'chat' | 'gallery'>('chat');
+
+  // Fix: Added missing createNewChat function to resolve "Cannot find name 'createNewChat'"
+  const createNewChat = () => {
+    const newId = crypto.randomUUID();
+    const newSession: ChatSession = {
+      id: newId,
+      title: 'New Bharat Chat',
+      messages: [],
+      updatedAt: new Date()
+    };
+    setSessions(prev => [newSession, ...prev]);
+    setActiveSessionId(newId);
+    setView('chat');
+  };
 
   useEffect(() => {
     const savedSessions = localStorage.getItem('indian_ai_sessions_v7');
@@ -32,7 +45,9 @@ const App: React.FC = () => {
       const parsed = JSON.parse(savedSessions);
       setSessions(parsed.map((s: any) => ({ ...s, updatedAt: new Date(s.updatedAt) })));
       if (parsed.length > 0) setActiveSessionId(parsed[0].id);
-    } else { createNewChat(); }
+    } else { 
+      createNewChat(); 
+    }
     if (savedStats) setUserStats(JSON.parse(savedStats));
   }, []);
 
@@ -41,6 +56,26 @@ const App: React.FC = () => {
 
   const activeSession = sessions.find(s => s.id === activeSessionId);
 
+  const updateAiMessage = (id: string, contentOrFn: string | ((prev: string) => string), mediaUrl?: string, type?: Message['type']) => {
+    setSessions(prev => prev.map(s => s.id === activeSessionId ? {
+      ...s,
+      messages: s.messages.map(m => {
+        if (m.id === id) {
+          const currentContent = m.content === 'Indian AI is thinking...' ? '' : m.content;
+          const newContent = typeof contentOrFn === 'function' ? contentOrFn(currentContent) : contentOrFn;
+          return { 
+            ...m, 
+            content: newContent, 
+            videoUrl: type === 'video-gen' ? mediaUrl : m.videoUrl,
+            imageUrl: type === 'image-gen' ? mediaUrl : m.imageUrl,
+            type: type || m.type
+          };
+        }
+        return m;
+      })
+    } : s));
+  };
+
   const handleSendMessage = async (text: string, imageFile?: File) => {
     if (!activeSessionId) return;
     const trimmedText = text.trim();
@@ -48,149 +83,152 @@ const App: React.FC = () => {
 
     setIsLoading(true);
     let userImageUrl: string | undefined;
+    let base64Data: string | undefined;
+    let mimeType: string | undefined;
+
     if (imageFile) {
-      userImageUrl = await new Promise((resolve) => {
+      const readerResult = await new Promise<string>((resolve) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result as string);
         reader.readAsDataURL(imageFile);
       });
+      userImageUrl = readerResult;
+      const parts = readerResult.split(',');
+      base64Data = parts[1];
+      mimeType = parts[0].match(/:(.*?);/)?.[1] || 'image/png';
     }
 
     const userMsg: Message = { id: crypto.randomUUID(), role: Role.USER, content: text, timestamp: new Date(), imageUrl: userImageUrl };
-    setSessions(prev => prev.map(s => s.id === activeSessionId ? { ...s, messages: [...s.messages, userMsg], title: s.messages.length === 0 ? text.substring(0, 30) : s.title, updatedAt: new Date() } : s));
+    
+    setSessions(prev => prev.map(s => s.id === activeSessionId ? { 
+      ...s, 
+      messages: [...s.messages, userMsg], 
+      title: s.messages.length === 0 ? (text.substring(0, 30) || 'Visual Query') : s.title, 
+      updatedAt: new Date() 
+    } : s));
 
     const aiMsgId = crypto.randomUUID();
     const aiMsg: Message = { id: aiMsgId, role: Role.AI, content: 'Indian AI is thinking...', timestamp: new Date() };
-    setSessions(prev => prev.map(s => s.id === activeSessionId ? { ...s, messages: [...s.messages, aiMsg] } : s));
-
-    const lowerText = trimmedText.toLowerCase();
-    const videoKeys = ['video', 'animation', 'movie', 'chalchitra', 'film', 'clip'];
-    const imageKeys = ['image', 'photo', 'picture', 'tasveer', 'chitra', 'drawing', 'portrait'];
-    const triggerKeys = ['make', 'create', 'banao', 'dikhao', 'generate', 'show', 'draw'];
-
-    const isVideo = videoKeys.some(k => lowerText.includes(k)) || lowerText.startsWith('/video');
-    const isImage = imageKeys.some(k => lowerText.includes(k)) || lowerText.startsWith('/image');
-    const hasTrigger = triggerKeys.some(k => lowerText.includes(k));
     
-    const isMediaRequest = isVideo || isImage || (hasTrigger && (lowerText.includes('video') || lowerText.includes('photo')));
+    setSessions(prev => prev.map(s => s.id === activeSessionId ? { 
+      ...s, 
+      messages: [...s.messages, aiMsg] 
+    } : s));
 
     try {
-      if (isMediaRequest) {
-        let plan = "";
-        await chatStream(trimmedText, activeSession?.messages || [], (chunk) => {
-          plan += chunk;
-          updateAiMessage(aiMsgId, plan);
-        }, { isMediaPlanning: true });
-
-        let prompt = trimmedText.replace(/^\/(image|video)\s*/i, '')
-          .replace(/(generate|create|make|banao|show|dikhao|video|image|photo|picture|tasveer|chitra|chalchitra)\s+(a|an)?\s+(video|image|photo|picture)?\s+(of|about)?\s+/gi, '')
-          .trim() || "A beautiful scenic view of Bharat";
-
-        if (isImage) {
-          const res = await generateImage(prompt, lowerText.includes('fix') && lastMedia?.type === 'image' ? lastMedia.url : undefined);
-          if (res) { setLastMedia({ url: res, type: 'image' }); updateAiMessage(aiMsgId, plan + "\n\nPhoto complete!", res); }
-        }
-        if (isVideo) {
-          if (!userStats.isSubscribed && userStats.videoTrialCount >= 3) {
-            updateAiMessage(aiMsgId, plan + "\n\nTrial Expired. Upgrade to Bharat Premium for unlimited 15s 3D videos.");
+      const isMediaRequest = /video|image|photo|picture|render|make|create/i.test(text);
+      
+      if (isMediaRequest && text.toLowerCase().includes('video')) {
+         if (!userStats.isSubscribed && userStats.videoTrialCount >= 3) {
+            updateAiMessage(aiMsgId, "You've reached the trial limit for videos. Please upgrade to continue creating cinematic visions!");
+            setIsLoading(false);
             return;
-          }
-          if (window.aistudio && !(await window.aistudio.hasSelectedApiKey())) await window.aistudio.openSelectKey();
-          const res = await generateVideo(prompt, (msg) => updateAiMessage(aiMsgId, plan + "\n\n" + msg));
-          if (res) {
-            setLastMedia({ url: res, type: 'video' });
-            if (!userStats.isSubscribed) setUserStats(p => ({ ...p, videoTrialCount: p.videoTrialCount + 1 }));
-            updateAiMessage(aiMsgId, plan + "\n\nYour 15s 3D cinematic clip is ready!", undefined, undefined, true, res);
-          }
-        }
-      } else if (imageFile) {
-        const res = await analyzeImage(userImageUrl!.split(',')[1], imageFile.type, text || "What is in this image?");
-        updateAiMessage(aiMsgId, res || "Analysis failed.");
-      } else {
-        let full = "";
-        const res = await chatStream(text, activeSession?.messages || [], (chunk) => { full += chunk; updateAiMessage(aiMsgId, full); }, { useSearch, usePro });
-        updateAiMessage(aiMsgId, res.fullText, undefined, res.sources);
-      }
-    } catch (e: any) {
-      if (e.message === "KEY_RESET") {
-        updateAiMessage(aiMsgId, "Paid API Key required for 3D video. Please select your key.");
-        if (window.aistudio) await window.aistudio.openSelectKey();
-      } else { updateAiMessage(aiMsgId, "Dukh hai, kuch technical problem aayi."); }
-    } finally { setIsLoading(false); }
-  };
+         }
+         
+         if (window.aistudio && !(await window.aistudio.hasSelectedApiKey())) {
+           await window.aistudio.openSelectKey();
+         }
 
-  const handleEditVideo = async (originalMessage: Message, editPrompt: string, aspectRatio: '16:9' | '9:16' = '16:9') => {
-    setView('chat');
-    setIsLoading(true);
-    const aiMsgId = crypto.randomUUID();
-    const aiMsg: Message = { id: aiMsgId, role: Role.AI, content: 'Starting Bharat Studio rendering...', timestamp: new Date() };
-    setSessions(prev => prev.map(s => s.id === activeSessionId ? { ...s, messages: [...s.messages, aiMsg] } : s));
-
-    try {
-      if (window.aistudio && !(await window.aistudio.hasSelectedApiKey())) await window.aistudio.openSelectKey();
-      const res = await generateVideo(editPrompt, (msg) => updateAiMessage(aiMsgId, msg), originalMessage.videoUrl, aspectRatio);
-      if (res) {
-        updateAiMessage(aiMsgId, "Edit complete! Your vision has been updated.", undefined, undefined, true, res);
-      }
-    } catch (e: any) {
-      if (e.message === "KEY_RESET") {
-        updateAiMessage(aiMsgId, "Paid API Key required for editing. Please select your key.");
-        if (window.aistudio) await window.aistudio.openSelectKey();
+         const videoUrl = await generateVideo(text, (msg) => updateAiMessage(aiMsgId, msg));
+         if (videoUrl) {
+           setUserStats(prev => ({ ...prev, videoTrialCount: prev.videoTrialCount + 1 }));
+           updateAiMessage(aiMsgId, "Bharat Studio has rendered your 15s cinematic vision!", videoUrl, 'video-gen');
+         } else {
+           updateAiMessage(aiMsgId, "I encountered an error while rendering the video. Please try again.");
+         }
+      } else if (isMediaRequest && (text.toLowerCase().includes('image') || text.toLowerCase().includes('photo'))) {
+         const imageUrl = await generateImage(text, userImageUrl);
+         if (imageUrl) {
+           updateAiMessage(aiMsgId, "Here is the visual interpretation I created for you.", imageUrl, 'image-gen');
+         } else {
+           updateAiMessage(aiMsgId, "I couldn't generate the image right now. Let's try chatting instead.");
+         }
+      } else if (base64Data && mimeType) {
+        const analysis = await analyzeImage(base64Data, mimeType, text || "Describe this image in detail.");
+        updateAiMessage(aiMsgId, analysis || "I've analyzed the image.");
       } else {
-        updateAiMessage(aiMsgId, "Maafi chahte hain, editing failed.");
+        const history = activeSession?.messages || [];
+        const { fullText, sources } = await chatStream(text, history, (chunk) => {
+          updateAiMessage(aiMsgId, prev => prev + chunk);
+        }, { useSearch, usePro });
+        
+        setSessions(prev => prev.map(s => s.id === activeSessionId ? {
+          ...s,
+          messages: s.messages.map(m => m.id === aiMsgId ? { ...m, content: fullText, sources } : m)
+        } : s));
+      }
+    } catch (error: any) {
+      if (error.message === 'KEY_RESET' && window.aistudio) {
+        await window.aistudio.openSelectKey();
+        updateAiMessage(aiMsgId, "API Key was reset. Please try sending your request again.");
+      } else {
+        updateAiMessage(aiMsgId, "I'm sorry, I'm having trouble connecting right now. Please try again later.");
       }
     } finally {
       setIsLoading(false);
     }
   };
 
-  const updateAiMessage = (id: string, content: string, imageUrl?: string, sources?: any[], isVideo = false, videoUrl?: string) => {
-    setSessions(prev => prev.map(s => s.id === activeSessionId ? { ...s, messages: s.messages.map(m => m.id === id ? { ...m, content, imageUrl: imageUrl || m.imageUrl, videoUrl: videoUrl || m.videoUrl, sources: sources || m.sources } : m) } : s));
+  const handleEditVideo = async (originalMsg: Message, editPrompt: string, aspectRatio: '16:9' | '9:16') => {
+    setView('chat');
+    setIsLoading(true);
+    
+    const aiMsgId = crypto.randomUUID();
+    const aiMsg: Message = { id: aiMsgId, role: Role.AI, content: 'Starting Bharat Studio Edit...', timestamp: new Date() };
+    setSessions(prev => prev.map(s => s.id === activeSessionId ? { ...s, messages: [...s.messages, aiMsg] } : s));
+
+    try {
+      const videoUrl = await generateVideo(editPrompt, (msg) => updateAiMessage(aiMsgId, msg), originalMsg.videoUrl, aspectRatio);
+      if (videoUrl) {
+        updateAiMessage(aiMsgId, "Studio Edit Complete! Your refined cinematic vision is ready.", videoUrl, 'video-gen');
+      } else {
+        updateAiMessage(aiMsgId, "The studio edit failed. Please try again.");
+      }
+    } catch (error) {
+      updateAiMessage(aiMsgId, "Error during video editing.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const createNewChat = () => {
-    const s: ChatSession = { id: crypto.randomUUID(), title: 'New Bharat Chat', messages: [], updatedAt: new Date() };
-    setSessions(p => [s, ...p]); setActiveSessionId(s.id);
-    setView('chat');
+  const handleDeleteSession = (id: string) => {
+    setSessions(prev => {
+      const filtered = prev.filter(s => s.id !== id);
+      if (activeSessionId === id) {
+        setActiveSessionId(filtered.length > 0 ? filtered[0].id : null);
+        if (filtered.length === 0) {
+          setTimeout(createNewChat, 0);
+        }
+      }
+      return filtered;
+    });
   };
 
   return (
-    <div className="flex h-screen overflow-hidden font-sans relative">
-      {/* Centered Top Flag Emblem */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 z-[100] pointer-events-none hidden md:block">
-        <div className="mt-2 flex flex-col items-center float-animation">
-          <div className="w-14 h-14 bg-white rounded-full shadow-2xl border-4 border-orange-500/30 flex items-center justify-center text-4xl flag-pulse overflow-hidden bg-gradient-to-b from-orange-400 via-white to-green-500">
-            <span className="drop-shadow-md">🇮🇳</span>
-          </div>
-          <div className="text-[9px] font-black text-slate-800 uppercase tracking-[0.3em] mt-2 bg-white/90 px-3 py-1 rounded-full backdrop-blur-md shadow-sm border border-orange-100">
-            Bharat AI
-          </div>
-        </div>
-      </div>
-
+    <div className="flex h-screen bg-slate-50 overflow-hidden font-sans antialiased text-slate-900">
       <Sidebar 
-        sessions={sessions} 
-        activeId={activeSessionId} 
-        onSelect={(id) => { setActiveSessionId(id); setView('chat'); }} 
-        onNew={createNewChat} 
-        onDelete={(id) => setSessions(p => p.filter(x => x.id !== id))} 
-        isOpen={isSidebarOpen} 
-        toggle={() => setIsSidebarOpen(!isSidebarOpen)} 
+        sessions={sessions}
+        activeId={activeSessionId}
+        onSelect={(id) => { setActiveSessionId(id); setView('chat'); }}
+        onNew={createNewChat}
+        onDelete={handleDeleteSession}
+        isOpen={isSidebarOpen}
+        toggle={() => setIsSidebarOpen(!isSidebarOpen)}
         view={view}
         setView={setView}
       />
-      <main className="flex-1 flex flex-col min-w-0 bg-[#fffaf5] relative">
+      <main className="flex-1 flex flex-col min-w-0 bg-white relative">
         {view === 'chat' ? (
           <ChatWindow 
-            messages={activeSession?.messages || []} 
-            onSend={handleSendMessage} 
-            isLoading={isLoading} 
-            useSearch={useSearch} 
-            setUseSearch={setUseSearch} 
-            usePro={usePro} 
-            setUsePro={setUsePro} 
-            userStats={userStats} 
-            onSubscribe={() => { if (window.confirm("Upgrade to Premium for $100/day?")) setUserStats(p => ({ ...p, isSubscribed: true })); }} 
+            messages={activeSession?.messages || []}
+            onSend={handleSendMessage}
+            isLoading={isLoading}
+            useSearch={useSearch}
+            setUseSearch={setUseSearch}
+            usePro={usePro}
+            setUsePro={setUsePro}
+            userStats={userStats}
+            onSubscribe={() => setUserStats(prev => ({ ...prev, isSubscribed: true }))}
           />
         ) : (
           <VideoGallery sessions={sessions} onEdit={handleEditVideo} />
@@ -200,4 +238,5 @@ const App: React.FC = () => {
   );
 };
 
+// Fix: Added missing default export to resolve index.tsx error
 export default App;
