@@ -1,20 +1,42 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
 
-# Run and deploy your AI Studio app
+# 🇮🇳 Indian AI - Bharat's Smartest Assistant
 
-This contains everything you need to run your app locally.
+**Indian AI** ek powerful aur localized AI assistant hai jo modern Indian context ko dhyan mein rakh kar banaya gaya hai. Ye fast chat, HD image generation, aur 3D cinematic video generation capabilities se less hai.
 
-View your app in AI Studio: https://ai.studio/apps/drive/1tmdvA_4RprvHN8wdEYBjhKoHBQgGNggu
+## ✨ Features
+- **Ashok Chakra Interface**: Ek sundar aur animated interface jo Bharat ki pehchan hai.
+- **Multi-Modal**: Text chat, Image analysis, aur Video creation.
+- **Subscription Model**: $99/monthly aur $249/3-months (Value Pack).
+- **Unlimited Access**: Premium users ke liye koi daily limit nahi.
+- **Free Quota**: Free users ke liye 7 images aur 3 videos daily.
+- **Developer**: Mohammad Ashik Ali.
 
-## Run Locally
+## 🚀 Quick Start (Local)
 
-**Prerequisites:**  Node.js
+1. Clone karein repository:
+   ```bash
+   git clone https://github.com/your-username/indian-ai.git
+   ```
+2. Dependencies install karein:
+   ```bash
+   npm install
+   ```
+3. `.env` file banayein aur apni API Key dalein:
+   ```env
+   API_KEY=your_gemini_api_key_here
+   ```
+4. App start karein:
+   ```bash
+   npm run dev
+   ```
 
+## ☁️ Deployment (Vercel)
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+1. Is project ko **GitHub** par push karein.
+2. [Vercel](https://vercel.com) par jayein aur "New Project" par click karein.
+3. Apna GitHub repo select karein.
+4. **Environment Variables** section mein `API_KEY` add karein.
+5. "Deploy" button dabayein!
+
+## 📜 License
+© 2024 Indian AI Labs. Created with ❤️ by Mohammad Ashik Ali.

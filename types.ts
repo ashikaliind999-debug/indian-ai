@@ -24,6 +24,9 @@ export interface ChatSession {
 }
 
 export interface UserStats {
-  videoTrialCount: number;
+  videoTrialCount: number; // Legacy, kept for compatibility if needed
+  dailyVideoCount: number;
+  dailyImageCount: number;
+  lastVideoResetDate: string; // ISO date string
   isSubscribed: boolean;
 }
