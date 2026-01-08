@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI as GoogleGenerativeAI } from "@google/genai";
 
 export const MODELS = {
   FAST: 'gemini-1.5-flash',
